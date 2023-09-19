@@ -18,9 +18,13 @@ import base64
 from configparser import ConfigParser
 import json
 
+# TODO: modify code so that it receives a code from the frontend, and then sends a request to github to get the access token
+# TODO: Create functions to revoke access token and delete session
+
 # Custom utils
 import utils.login as login
 import utils.database as database
+from functions.oauth import OauthWorkflow
 
 app = FastAPI()
 
@@ -40,40 +44,37 @@ async def root():
 
 @app.get("/api/login/github", tags=["login"])
 async def github_login(response: Response):
-    uri = login.construct_github_login_url()
+    # Create an oauth workflow
+    oauth_workflow = OauthWorkflow(db)
+
+    # Construct the login url
+    uri = oauth_workflow.construct_login_url()
+
+    # Check if the uri is None
+    if uri is None:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
     response.status_code = status.HTTP_200_OK
     return {"url": uri}
 
 
 @app.get("/api/oauth/github/redirect", tags=["login"])
-async def github_login_redirect(code: str):
-    # Get access token from github
-    access_token = await login.get_access_token(code)
+async def github_login_redirect(code: str, response: Response):
+    # Create an oauth workflow
+    oauth_workflow = OauthWorkflow(db)
 
-    # If access token is None, return error
-    if access_token is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid code")
+    # Run workflow
+    package = await oauth_workflow.run(code)
 
-    # Generate an uuid for the user
-    uuid = login.generate_uuid()
+    # Check if the package is None
+    if package is None:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
 
-    # Check if uuid is not taken
-    while not login.check_uuid_not_taken(uuid, db):
-        uuid = login.generate_uuid()
-
-    # Hash the session_id
-    hashed_session_id = login.hash_session_id(uuid)
-
-    # Get the user info from github
-    user_info = await login.get_user_info(access_token)
-
-    username = user_info["login"]
-
-    # Insert the user into the database
-    database.create_user_session(username, uuid, db)
-
-    # Return the session_id
-    return {"username": username, "session_id": hashed_session_id}
+    # Return package
+    response.status_code = status.HTTP_200_OK
+    return package
 
 
 if __name__ == '__main__':
