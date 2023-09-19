@@ -6,7 +6,7 @@ from fastapi import FastAPI, Response, status, HTTPException, Cookie, Form, Uplo
     Header
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBasicCredentials
+from fastapi.security import HTTPBasicCredentials, OAuth2AuthorizationCodeBearer
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from uuid import uuid4
@@ -18,13 +18,14 @@ import base64
 from configparser import ConfigParser
 import json
 
-# TODO: modify code so that it receives a code from the frontend, and then sends a request to github to get the access token
 # TODO: Create functions to revoke access token and delete session
 
 # Custom utils
-import utils.login as login
 import utils.database as database
 from functions.oauth import OauthWorkflow
+
+# Custom functions
+from functions.user_management import verify_session_id, UserManagement
 
 app = FastAPI()
 
@@ -59,7 +60,7 @@ async def github_login(response: Response):
     return {"url": uri}
 
 
-@app.get("/api/oauth/github/redirect", tags=["login"])
+@app.get("/api/oauth/github/session_id", tags=["login"])
 async def github_login_redirect(code: str, response: Response):
     # Create an oauth workflow
     oauth_workflow = OauthWorkflow(db)
@@ -77,7 +78,28 @@ async def github_login_redirect(code: str, response: Response):
     return package
 
 
+@app.get("/init_login", tags=["login"])
+async def init_login(code: str, response: Response):
+    response.status_code = status.HTTP_200_OK
+    print(code)
+
+
+@app.post("/api/update_profile", tags=["profile"], dependencies=[Depends(verify_session_id)])
+async def update_profile(response: Response, body: dict = Body(...), username: str = Header(None)):
+    # Check if the body is None
+    if body is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No body provided"}
+
+    user_management.update_user_profile(username, body)
+
+    # Return the response
+    response.status_code = status.HTTP_200_OK
+    return {"message": "Profile updated"}
+
+
 if __name__ == '__main__':
     client = pymongo.MongoClient(database.get_database_uri())
     db = client["codespark"]
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    user_management = UserManagement(db)
+    uvicorn.run(app, host="84.250.88.117", port=8000)

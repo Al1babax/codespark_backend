@@ -102,14 +102,31 @@ class OauthWorkflow:
         return True
 
     def has_user_profile(self) -> bool:
-        if self.username is None:
+        """
+        Checks if user has profile, if not create one
+        Also checks if the user profile is complete
+        :return:
+        """
+        if self.username is None or self.username == "":
             return False
 
         user_profile = self.col_users.find_one({"username": self.username})
 
         if user_profile is None:
-            return False
+            self.create_user_profile()
+            return True
 
+        fields = ["email", "discord_username", "profile_picture", "natural_languages", "background", "looking_for",]
+
+        for field in fields:
+            if field == "natural_languages":
+                if len(user_profile[field]) == 0:
+                    return True
+            else:
+                if user_profile[field] is None or user_profile[field] == "":
+                    return True
+
+        # If user profile is complete
         self.has_profile = True
         return True
 
@@ -129,7 +146,7 @@ class OauthWorkflow:
             "username": self.username,
             "email": "",
             "discord_username": "",
-            "profile_picture": None,
+            "profile_picture": "",
             "natural_languages": [],
             "background": "",
             "looking_for": "",
@@ -185,10 +202,10 @@ class OauthWorkflow:
             return None
 
         # Check if the user has a profile, if not create one
-        if not self.has_user_profile():
-            success = self.create_user_profile()
-            if not success:
-                return None
+        success = self.has_user_profile()
+
+        if not success:
+            return None
 
         # Check if user has a session, if they have one, delete it
         if self.has_session():
@@ -204,7 +221,7 @@ class OauthWorkflow:
         package = {
             "username": self.username,
             "session_id": self.hashed_session_id,
-            "has_profile": self.has_profile
+            "has_profile": str(self.has_profile)
         }
 
         return package
@@ -221,7 +238,7 @@ class OauthWorkflow:
 
     @staticmethod
     def get_redirect_uri():
-        return "http://localhost:8000/api/oauth/github/redirect"
+        return "http://84.250.88.117:8000/init_login"
 
     @staticmethod
     def generate_id():
