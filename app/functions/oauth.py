@@ -148,6 +148,8 @@ class OauthWorkflow:
             "background": "",
             "looking_for": "",
             "how_contribute": "",
+            "likes": [],
+            "matches": [],
             "created_at": dt.datetime.now(),
         })
 
