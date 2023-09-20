@@ -1,22 +1,30 @@
 import bcrypt
 import datetime
-from fastapi import Header, HTTPException, status
+from fastapi import Header, HTTPException, status, Request
 import pymongo
 
 from utils import database
 
 # TODO: handle profile pictures
+# TODO: add update time to user profile
 
 
-def verify_session_id(username: str = Header(None), session_id: str = Header(None)):
+def verify_session_id(request: Request = None):
     """
     Verifies that the session id is valid ROUTE PROTECTOR
-    :param username:
-    :param session_id:
+    :param request:
     :return:
     """
     client = pymongo.MongoClient(database.get_database_uri())
     db = client["codespark"]
+
+    # Check if the request is None
+    if request is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No request provided")
+
+    # Get the username and session id
+    username = request.headers.get("username")
+    session_id = request.headers.get("session_id")
 
     # Check if the username is None
     if username is None:
@@ -35,11 +43,11 @@ def verify_session_id(username: str = Header(None), session_id: str = Header(Non
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session id")
 
     # Make sure the session id is not expired
-    if user["expires"] < datetime.datetime.now():
+    if user["expire_time"] < datetime.datetime.now():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session id expired")
 
     # Use bcrypt to compare the session id
-    if bcrypt.checkpw(session_id.encode(), user["hashed_session_id"]):
+    if bcrypt.checkpw(user["session_id"].encode(), session_id.encode()):
         return username, session_id
 
 
@@ -58,10 +66,6 @@ class UserManagement:
         :param data:
         :return:
         """
-
-        # Check if the username is None
-        if username is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No username provided")
 
         # Check if the data is None
         if data is None:

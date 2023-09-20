@@ -1,6 +1,5 @@
 from typing import Optional
 import hmac
-import hashlib
 import uvicorn
 from fastapi import FastAPI, Response, status, HTTPException, Cookie, Form, UploadFile, File, Request, Depends, Body, \
     Header
@@ -12,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from uuid import uuid4
 import datetime as dt
 import pymongo
-import bcrypt
 import requests
 import base64
 from configparser import ConfigParser
@@ -23,6 +21,7 @@ import json
 # Custom utils
 import utils.database as database
 from functions.oauth import OauthWorkflow
+from utils.basic import BasicUtils
 
 # Custom functions
 from functions.user_management import verify_session_id, UserManagement
@@ -91,7 +90,18 @@ async def update_profile(response: Response, body: dict = Body(...), username: s
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"message": "No body provided"}
 
-    user_management.update_user_profile(username, body)
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Update the user profile
+    success = user_management.update_user_profile(username, body)
+
+    # Check if the update was successful
+    if not success:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
 
     # Return the response
     response.status_code = status.HTTP_200_OK
@@ -102,4 +112,5 @@ if __name__ == '__main__':
     client = pymongo.MongoClient(database.get_database_uri())
     db = client["codespark"]
     user_management = UserManagement(db)
+    basic_utils = BasicUtils(db)
     uvicorn.run(app, host="84.250.88.117", port=8000)

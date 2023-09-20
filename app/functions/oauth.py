@@ -116,15 +116,12 @@ class OauthWorkflow:
             self.create_user_profile()
             return True
 
-        fields = ["email", "discord_username", "profile_picture", "natural_languages", "background", "looking_for",]
+        fields = ["email", "discord_username", "natural_languages", "background", "looking_for", "how_contribute"]
 
+        # Check if fields are none or empty
         for field in fields:
-            if field == "natural_languages":
-                if len(user_profile[field]) == 0:
-                    return True
-            else:
-                if user_profile[field] is None or user_profile[field] == "":
-                    return True
+            if user_profile[field] is None or user_profile[field] == "":
+                return True
 
         # If user profile is complete
         self.has_profile = True
@@ -147,7 +144,7 @@ class OauthWorkflow:
             "email": "",
             "discord_username": "",
             "profile_picture": "",
-            "natural_languages": [],
+            "natural_languages": "",
             "background": "",
             "looking_for": "",
             "how_contribute": "",
