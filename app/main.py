@@ -265,7 +265,7 @@ async def delete_user(response: Response, username: str = Header(None)):
     # Delete the user
     success = user_management.delete_user(username)
 
-    # Check if the delete was successful
+    # Check if to delete was successful
     if not success:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Internal server error"}
