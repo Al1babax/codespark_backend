@@ -139,6 +139,8 @@ class OauthWorkflow:
         if self.username is None:
             return None
 
+        current_time = dt.datetime.now()
+
         self.col_users.insert_one({
             "username": self.username,
             "email": "",
@@ -150,7 +152,10 @@ class OauthWorkflow:
             "how_contribute": "",
             "likes": [],
             "matches": [],
-            "created_at": dt.datetime.now(),
+            "created_at": current_time,
+            "updated_at": current_time,
+            "last_login": current_time,
+            "active": True
         })
 
         return True
@@ -162,11 +167,18 @@ class OauthWorkflow:
         creation_time = dt.datetime.now()
         expire_time = creation_time + dt.timedelta(days=1)
 
+        # Find user id
+        user = self.col_users.find_one({"username": self.username})
+        user_id = user["_id"]
+
         self.col_session.insert_one({
+            "user_id": user_id,
             "username": self.username,
             "session_id": self.session_id,
-            "creation_time": creation_time,
-            "expire_time": expire_time
+            "created_at": creation_time,
+            "expired_at": expire_time,
+            "last_used": creation_time,
+            "active": True
         })
 
         return True

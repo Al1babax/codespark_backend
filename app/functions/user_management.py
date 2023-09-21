@@ -5,6 +5,7 @@ import pymongo
 
 from utils import database
 
+
 # TODO: handle profile pictures
 # TODO: add update time to user profile
 
@@ -43,7 +44,7 @@ def verify_session_id(request: Request = None):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session id")
 
     # Make sure the session id is not expired
-    if user["expire_time"] < datetime.datetime.now():
+    if user["expired_at"] < datetime.datetime.now():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session id expired")
 
     # Use bcrypt to compare the session id
@@ -97,3 +98,60 @@ class UserManagement:
         self.col_users.update_one({"username": username}, {"$set": user_data})
 
         return True
+
+    def get_user_profile(self, username: str) -> dict:
+        """
+        Gets the user profile
+        :param username:
+        :return:
+        """
+
+        # Check if the username is None
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No username provided")
+
+        # Find the user
+        user_data = self.col_users.find_one({"username": username})
+
+        # Check if the user is None
+        if user_data is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
+
+        # Fields to to deliver
+        schema = ["username", "email", "discord_username", "profile_picture", "natural_languages", "background",
+                  "looking_for", "how_contribute"]
+
+        # Create the user data
+        user_data = {field: user_data[field] for field in schema}
+
+        return user_data
+
+    def get_matches_view(self, username: str, match_username: str) -> dict:
+        """
+        Gets the user profile
+        :param username:
+        :param match_username:
+        :return:
+        """
+
+        # Check if the username is None
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No username provided")
+
+        # Find the user
+        user_data = self.col_users.find_one({"username": username})
+
+        # Find the match user
+        matched_user = self.col_users.find_one({"username": match_username})
+
+        # Check if the user is None
+        if user_data is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
+
+        # Fields to to deliver
+        schema = ["username", "profile_picture", "background"]
+
+        # Create the user data
+        user_data = {field: user_data[field] for field in schema}
+
+        return user_data

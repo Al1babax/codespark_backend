@@ -5,6 +5,7 @@ import pymongo
 from dotenv import load_dotenv
 import os
 import datetime as dt
+from bson.objectid import ObjectId
 
 
 def create_user(username):
@@ -47,15 +48,123 @@ def create_user(username):
         "likes": [],
         "matches": [],
         "created_at": dt.datetime.now(),
+        "updated_at": dt.datetime.now(),
+        "last_login": dt.datetime.now(),
+        "active": True
     })
 
 
+def like_user(username, liked_username):
+    # Generate a unique custom _id
+    package_id = ObjectId()
+
+    # Check if the custom _id is already in use (unlikely but possible)
+    while col_likes.find_one({"_id": package_id}):
+        package_id = ObjectId()  # Generate a new custom _id
+
+    # Get the user id of the user
+    user = col_users.find_one({"username": username})
+    user_id = user["_id"]
+
+    # Get the user id of the liked user
+    liked_user = col_users.find_one({"username": liked_username})
+    liked_user_id = liked_user["_id"]
+
+    package = {
+        "_id": package_id,
+        "active": True,
+        "user_id": user_id,
+        "liked_user_id": liked_user_id,
+        "created_at": dt.datetime.now(),
+        "deleted_at": None
+    }
+
+    col_likes.insert_one(package)
+
+    # Update the user's likes
+    col_users.update_one({"username": username}, {"$push": {"likes": package_id}})
+
+    # Update the liked user's likes
+    col_users.update_one({"username": liked_username}, {"$push": {"likes": package_id}})
+
+
+def remove_all_likes():
+    col_likes.delete_many({})
+    for user in col_users.find({}):
+        col_users.update_one({"username": user["username"]}, {"$set": {"likes": []}})
+
+
+def remove_all_matches():
+    col_matches.delete_many({})
+    for user in col_users.find({}):
+        col_users.update_one({"username": user["username"]}, {"$set": {"matches": []}})
+
+
+def remove_all_users():
+    col_users.delete_many({})
+
+
+def match_user(username, matched_username):
+    # Generate a unique custom _id
+    package_id = ObjectId()
+
+    # Check if the custom _id is already in use (unlikely but possible)
+    while col_likes.find_one({"_id": package_id}):
+        package_id = ObjectId()  # Generate a new custom _id
+
+    # Get the user id of the user
+    user = col_users.find_one({"username": username})
+    user_id = user["_id"]
+
+    # Get the user id of the matched user
+    matched_user = col_users.find_one({"username": matched_username})
+    matched_user_id = matched_user["_id"]
+
+    package = {
+        "_id": package_id,
+        "active": True,
+        "user_id": user_id,
+        "matched_user_id": matched_user_id,
+        "created_at": dt.datetime.now(),
+        "deleted_at": None
+    }
+
+    col_matches.insert_one(package)
+
+    # Update the user's matches
+    col_users.update_one({"username": username}, {"$push": {"matches": package_id}})
+
+    # Update the matched user's matches
+    col_users.update_one({"username": matched_username}, {"$push": {"matches": package_id}})
+
+
 def create_random_likes(username="Al1babax"):
-    pass
+    all_users = list(col_users.find({}))
+
+    # Generate 10 likes for the user
+    ten_usernames = [user["username"] for user in all_users[1:11]]
+
+    # user likes 10 users
+    for liked_username in ten_usernames:
+        like_user(username, liked_username)
+
+    # Generate next 10 likes for the user
+    ten_usernames = [user["username"] for user in all_users[11:21]]
+
+    # 10 users like the user
+    for liked_username in ten_usernames:
+        like_user(liked_username, username)
 
 
 def create_random_matches(username="Al1babax"):
-    pass
+    all_users = list(col_users.find({}))
+
+    # Generate 10 matches for the user
+    ten_usernames = [user["username"] for user in all_users[30:40]]
+
+    # user matches 10 users
+    for matched_username in ten_usernames:
+        match_user(username, matched_username)
 
 
 def get_database_uri():
@@ -70,6 +179,15 @@ if __name__ == '__main__':
     col_likes = db["likes"]
     col_matches = db["matches"]
 
+    # remove_all_matches()
+    # remove_all_likes()
+    # remove_all_users()
+    # exit(0)
+
     # Generate 100 users
     for i in range(100):
         create_user(f"user{i}")
+
+    create_random_likes()
+
+    create_random_matches()

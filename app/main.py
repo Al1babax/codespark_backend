@@ -108,6 +108,295 @@ async def update_profile(response: Response, body: dict = Body(...), username: s
     return {"message": "Profile updated"}
 
 
+@app.get("/api/get_profile", tags=["profile"], dependencies=[Depends(verify_session_id)])
+async def get_profile(response: Response, username: str = Header(None)):
+    """
+    Gets the users full profile
+    :param response:
+    :param username:
+    :return:
+    """
+    # TODO: Make sure only the owner can access their own profile, this should be the case already
+
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Get the user profile
+    profile = user_management.get_user_profile(username)
+
+    # Check if the profile is None
+    if profile is None:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the profile
+    response.status_code = status.HTTP_200_OK
+    return profile
+
+
+@app.get("/api/get_matches_view", tags=["profile"], dependencies=[Depends(verify_session_id)])
+async def get_matches_view(response: Response, match_username: str, username: str = Header(None)):
+    """
+    Gets limited view of the user profile
+    :param response:
+    :param username:
+    :param match_username:
+    :return:
+    """
+    # TODO: finish this
+
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Get the user profile
+    profile_view = user_management.get_matches_view(username, match_username)
+
+    # Check if the profile is None
+    if profile_view is None:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the profile
+    response.status_code = status.HTTP_200_OK
+    return profile_view
+
+
+@app.get("/api/get_likes_view", tags=["profile"], dependencies=[Depends(verify_session_id)])
+async def get_likes_view(response: Response, username: str = Header(None)):
+    """
+    Gets limited view of the user profile
+    :param response:
+    :param username:
+    :return:
+    """
+    # TODO: finish this
+
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Get the user profile
+    profile_view = user_management.get_likes_view(username)
+
+    # Check if the profile is None
+    if profile_view is None:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the profile
+    response.status_code = status.HTTP_200_OK
+    return profile_view
+
+
+@app.get("/api/get_likes", tags=["likes"], dependencies=[Depends(verify_session_id)])
+async def get_likes(response: Response, username: str = Header(None)):
+    """
+    Gets the users likes
+    :param response:
+    :param username:
+    :return:
+    """
+    # TODO: finish this
+
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Get the users likes
+    likes = user_management.get_likes(username)
+
+    # Check if the likes is None
+    if likes is None:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the likes
+    response.status_code = status.HTTP_200_OK
+    return likes
+
+
+@app.get("/api/get_matches", tags=["matches"], dependencies=[Depends(verify_session_id)])
+async def get_matches(response: Response, username: str = Header(None)):
+    """
+    Gets the users matches
+    :param response:
+    :param username:
+    :return:
+    """
+    # TODO: finish this
+
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Get the users matches
+    matches = user_management.get_matches(username)
+
+    # Check if the matches is None
+    if matches is None:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the matches
+    response.status_code = status.HTTP_200_OK
+    return matches
+
+
+@app.get("/api/delete_user", tags=["user"], dependencies=[Depends(verify_session_id)])
+async def delete_user(response: Response, username: str = Header(None)):
+    """
+    Deletes the user
+    :param response:
+    :param username:
+    :return:
+    """
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Delete the user
+    success = user_management.delete_user(username)
+
+    # Check if the delete was successful
+    if not success:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the response
+    response.status_code = status.HTTP_200_OK
+    return {"message": "User deleted"}
+
+
+@app.get("/api/verify_session_id", tags=["user"])
+async def verify_session_id(response: Response, session_id: str = Header(None), username: str = Header(None)):
+    """
+    Verify if session still exists and is not expired
+    :param response:
+    :param session_id:
+    :param username:
+    :return:
+    """
+    # Check if the session_id is None
+    if session_id is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No session_id provided"}
+
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Verify the session_id
+    success = user_management.verify_session_id(session_id, username)
+
+    # Check if the verification was successful
+    if not success:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the response
+    response.status_code = status.HTTP_200_OK
+    return {"message": "Session verified"}
+
+
+@app.put("/api/like_user", tags=["likes"], dependencies=[Depends(verify_session_id)])
+async def like_user(response: Response, liked_username: str, username: str = Header(None)):
+    """
+    Likes a user
+    :param response:
+    :param liked_username:
+    :param username:
+    :return:
+    """
+    # Check if the liked_username is None
+    if liked_username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No liked_username provided"}
+
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Like the user
+    success = user_management.like_user(username, liked_username)
+
+    # Check if the like was successful
+    if not success:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the response
+    response.status_code = status.HTTP_200_OK
+    return {"message": "User liked"}
+
+
+@app.put("/api/unlike_user", tags=["likes"], dependencies=[Depends(verify_session_id)])
+async def unlike_user(response: Response, liked_username: str, username: str = Header(None)):
+    """
+    Unlikes a user
+    :param response:
+    :param liked_username:
+    :param username:
+    :return:
+    """
+    # Check if the liked_username is None
+    if liked_username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No liked_username provided"}
+
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Unlike the user
+    success = user_management.unlike_user(username, liked_username)
+
+    # Check if the unlike was successful
+    if not success:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the response
+    response.status_code = status.HTTP_200_OK
+    return {"message": "User unliked"}
+
+
+@app.get("/api/logout", tags=["user"], dependencies=[Depends(verify_session_id)])
+async def logout(response: Response, username: str = Header(None)):
+    """
+    Logs the user out
+    :param response:
+    :param username:
+    :return:
+    """
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Log the user out
+    success = user_management.logout(username)
+
+    # Check if the logout was successful
+    if not success:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the response
+    response.status_code = status.HTTP_200_OK
+    return {"message": "Logged out"}
+
+
 if __name__ == '__main__':
     client = pymongo.MongoClient(database.get_database_uri())
     db = client["codespark"]
