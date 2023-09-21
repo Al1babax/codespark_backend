@@ -2,6 +2,7 @@ import bcrypt
 import datetime
 from fastapi import Header, HTTPException, status, Request
 import pymongo
+import time
 
 from utils import database
 
@@ -35,21 +36,31 @@ def verify_session_id(request: Request = None):
     if session_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No session id provided")
 
-    # Check if the session id is valid and has not expired
-    col = db["sessions"]
+    # Get user id
+    col_users = db["users"]
+    col_sessions = db["sessions"]
 
-    user = col.find_one({"username": username})
+    user = col_users.find_one({"username": username, "active": True})
+    user_id = user["_id"]
+    session = col_sessions.find_one({"user_id": user_id, "active": True})
 
-    if user is None:
+    if session is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session id")
 
+    # Make sure session is active
+    if not session["active"]:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session is not active")
+
     # Make sure the session id is not expired
-    if user["expired_at"] < datetime.datetime.now():
+    if session["expired_at"] < datetime.datetime.now():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session id expired")
 
     # Use bcrypt to compare the session id
-    if bcrypt.checkpw(user["session_id"].encode(), session_id.encode()):
-        return username, session_id
+    if not bcrypt.checkpw(session_id.encode(), session["hashed_session_id"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session id")
+
+    # Update the session
+    col_sessions.update_one({"_id": session["_id"]}, {"$set": {"last_used": datetime.datetime.now()}})
 
 
 class UserManagement:
@@ -73,7 +84,7 @@ class UserManagement:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No data provided")
 
         # Find the user
-        user_data = self.col_users.find_one({"username": username})
+        user_data = self.col_users.find_one({"username": username, "active": True})
 
         # Check if the user is None
         if user_data is None:
@@ -82,7 +93,7 @@ class UserManagement:
         # Loop over all the fields in the data
         for field in user_data:
             # Skip fields that never update
-            if field in ["username", "_id", "created_at"]:
+            if field in ["username", "_id", "created_at", "updated_at", "active", "last_login", "likes", "matches"]:
                 continue
 
             # Skip profile_picture too
@@ -94,8 +105,11 @@ class UserManagement:
                 # Update the field
                 user_data[field] = data[field]
 
+        # New update time
+        user_data["updated_at"] = datetime.datetime.now()
+
         # Update the user
-        self.col_users.update_one({"username": username}, {"$set": user_data})
+        self.col_users.update_one({"_id": user_data["_id"]}, {"$set": user_data})
 
         return True
 
@@ -111,7 +125,7 @@ class UserManagement:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No username provided")
 
         # Find the user
-        user_data = self.col_users.find_one({"username": username})
+        user_data = self.col_users.find_one({"username": username, "active": True})
 
         # Check if the user is None
         if user_data is None:
@@ -155,3 +169,34 @@ class UserManagement:
         user_data = {field: user_data[field] for field in schema}
 
         return user_data
+
+    def delete_user(self, username: str):
+        """
+        Deletes the user account aka puts the active status to false and session status to false
+        :param username:
+        :return:
+        """
+
+        # Check if the username is None
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No username provided")
+
+        # Find the user
+        user_data = self.col_users.find_one({"username": username, "active": True})
+
+        # Check if the user is None
+        if user_data is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
+
+        # Update the user
+        self.col_users.update_one({"username": username},
+                                  {"$set": {"active": False, "updated_at": datetime.datetime.now()}})
+
+        # Update the session
+        self.col_sessions.update_one({"username": username},
+                                     {"$set": {"active": False, "last_used": datetime.datetime.now()}})
+
+        return True
+
+    def get_matches(self, username: str) -> list:
+        pass

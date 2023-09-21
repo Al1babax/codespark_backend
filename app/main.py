@@ -249,7 +249,7 @@ async def get_matches(response: Response, username: str = Header(None)):
     return matches
 
 
-@app.get("/api/delete_user", tags=["user"], dependencies=[Depends(verify_session_id)])
+@app.delete("/api/delete_user", tags=["user"], dependencies=[Depends(verify_session_id)])
 async def delete_user(response: Response, username: str = Header(None)):
     """
     Deletes the user

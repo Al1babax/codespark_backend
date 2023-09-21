@@ -6,6 +6,7 @@ from uuid import uuid4
 import datetime as dt
 import bcrypt
 
+#TODO: not saving session data atm, make separate colleciton to save them
 
 class OauthWorkflow:
 
@@ -81,22 +82,38 @@ class OauthWorkflow:
 
         return response_json
 
-    def generate_new_unique_session_id(self) -> str:
-        uuid = self.generate_id()
-        while self.is_session_id_taken(uuid):
-            uuid = self.generate_id()
-        return uuid
+    def generate_new_unique_session_id(self):
+        # Create session id
+        session_id = f"{self.generate_id()}-{self.username}"
 
-    def is_session_id_taken(self, uuid: str) -> bool:
-        return self.col_session.find_one({"session_id": uuid}) is not None
+        # Hash the session id
+        hashed_session_id = bcrypt.hashpw(session_id.encode(), bcrypt.gensalt())
+
+        # Store the session id and hashed session id
+        self.hashed_session_id = hashed_session_id
+        self.session_id = session_id
+
+    def is_session_id_taken(self, hashed_session_id: bytes) -> bool:
+        return self.col_session.find_one({"hashed_session_id": hashed_session_id}) is not None
 
     def has_session(self) -> bool:
         if self.username is None:
             return False
 
-        session = self.col_session.find_one({"username": self.username})
+        # Get user id
+        user = self.col_users.find_one({"username": self.username, "active": True})
+        user_id = user["_id"]
+
+        session = self.col_session.find_one({"user_id": user_id, "active": True})
 
         if session is None:
+            return False
+
+        # CHeck that session has not expired
+        if session["expired_at"] < dt.datetime.now():
+            # Change the active to false
+            self.col_session.update_one({"_id": session["_id"]},
+                                        {"$set": {"active": False, "last_used": dt.datetime.now()}})
             return False
 
         return True
@@ -110,7 +127,7 @@ class OauthWorkflow:
         if self.username is None or self.username == "":
             return False
 
-        user_profile = self.col_users.find_one({"username": self.username})
+        user_profile = self.col_users.find_one({"username": self.username, "active": True})
 
         if user_profile is None:
             self.create_user_profile()
@@ -125,14 +142,6 @@ class OauthWorkflow:
 
         # If user profile is complete
         self.has_profile = True
-        return True
-
-    def hash_session_id(self):
-        if self.session_id is None:
-            return None
-
-        self.hashed_session_id = bcrypt.hashpw(self.session_id.encode(), bcrypt.gensalt())
-
         return True
 
     def create_user_profile(self):
@@ -161,20 +170,20 @@ class OauthWorkflow:
         return True
 
     def create_session(self):
-        if self.username is None or self.session_id is None:
+        if self.username is None or self.session_id is None or self.hashed_session_id is None:
             return None
 
         creation_time = dt.datetime.now()
         expire_time = creation_time + dt.timedelta(days=1)
 
         # Find user id
-        user = self.col_users.find_one({"username": self.username})
+        user = self.col_users.find_one({"username": self.username, "active": True})
         user_id = user["_id"]
 
         self.col_session.insert_one({
             "user_id": user_id,
             "username": self.username,
-            "session_id": self.session_id,
+            "hashed_session_id": self.hashed_session_id,
             "created_at": creation_time,
             "expired_at": expire_time,
             "last_used": creation_time,
@@ -183,11 +192,16 @@ class OauthWorkflow:
 
         return True
 
-    def delete_user_session(self):
+    def remove_session(self):
         if self.username is None:
             return None
 
-        self.col_session.delete_one({"username": self.username})
+        # Find user id
+        user = self.col_users.find_one({"username": self.username, "active": True})
+        user_id = user["_id"]
+
+        # Find all sessions for the user and delete them
+        self.col_session.delete_many({"user_id": user_id})
 
         return True
 
@@ -196,14 +210,6 @@ class OauthWorkflow:
         self.access_token = await self.get_access_token(code)
 
         if self.access_token is None:
-            return None
-
-        # Generate an uuid for the user
-        self.session_id = self.generate_new_unique_session_id()
-
-        # Hash the session_id
-        success = self.hash_session_id()
-        if not success:
             return None
 
         # Get the user info from github
@@ -218,11 +224,14 @@ class OauthWorkflow:
         if not success:
             return None
 
-        # Check if user has a session, if they have one, delete it
-        if self.has_session():
-            self.delete_user_session()
+        # Generate an uuid for the user
+        self.generate_new_unique_session_id()
 
-        # Create new session
+        # Check if user has a session, if so remove it
+        if self.has_session():
+            # Remove the old session
+            self.remove_session()
+
         success = self.create_session()
 
         if not success:
@@ -231,7 +240,7 @@ class OauthWorkflow:
         # Return with package
         package = {
             "username": self.username,
-            "session_id": self.hashed_session_id,
+            "session_id": self.session_id,
             "has_profile": str(self.has_profile)
         }
 
