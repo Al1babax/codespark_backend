@@ -137,63 +137,6 @@ async def get_profile(response: Response, username: str = Header(None)):
     return profile
 
 
-@app.get("/api/get_matches_view", tags=["profile"], dependencies=[Depends(verify_session_id)])
-async def get_matches_view(response: Response, match_username: str, username: str = Header(None)):
-    """
-    Gets limited view of the user profile
-    :param response:
-    :param username:
-    :param match_username:
-    :return:
-    """
-    # TODO: finish this
-
-    # Check if the username is None
-    if username is None:
-        response.status_code = status.HTTP_400_BAD_REQUEST
-        return {"message": "No username provided"}
-
-    # Get the user profile
-    profile_view = user_management.get_matches_view(username, match_username)
-
-    # Check if the profile is None
-    if profile_view is None:
-        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        return {"message": "Internal server error"}
-
-    # Return the profile
-    response.status_code = status.HTTP_200_OK
-    return profile_view
-
-
-@app.get("/api/get_likes_view", tags=["profile"], dependencies=[Depends(verify_session_id)])
-async def get_likes_view(response: Response, username: str = Header(None)):
-    """
-    Gets limited view of the user profile
-    :param response:
-    :param username:
-    :return:
-    """
-    # TODO: finish this
-
-    # Check if the username is None
-    if username is None:
-        response.status_code = status.HTTP_400_BAD_REQUEST
-        return {"message": "No username provided"}
-
-    # Get the user profile
-    profile_view = user_management.get_likes_view(username)
-
-    # Check if the profile is None
-    if profile_view is None:
-        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        return {"message": "Internal server error"}
-
-    # Return the profile
-    response.status_code = status.HTTP_200_OK
-    return profile_view
-
-
 @app.get("/api/get_likes", tags=["likes"], dependencies=[Depends(verify_session_id)])
 async def get_likes(response: Response, username: str = Header(None)):
     """
@@ -230,8 +173,6 @@ async def get_matches(response: Response, username: str = Header(None)):
     :param username:
     :return:
     """
-    # TODO: finish this
-
     # Check if the username is None
     if username is None:
         response.status_code = status.HTTP_400_BAD_REQUEST
@@ -292,6 +233,8 @@ async def verify_session_id(response: Response, session_id: str = Header(None), 
     :param username:
     :return:
     """
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented")
+
     # Check if the session_id is None
     if session_id is None:
         response.status_code = status.HTTP_400_BAD_REQUEST
@@ -377,6 +320,38 @@ async def dislike_user(response: Response, liked_username: str, username: str = 
     # Return the response
     response.status_code = status.HTTP_200_OK
     return {"message": "User unliked"}
+
+
+@app.delete("/api/unmatch", tags=["matches"], dependencies=[Depends(verify_session_id)])
+async def unmatch(response: Response, matched_username: str, username: str = Header(None)):
+    """
+    Unmatches a user
+    :param response:
+    :param matched_username:
+    :param username:
+    :return:
+    """
+    # Check if the matched_username is None
+    if matched_username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No matched_username provided"}
+
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Unmatch the user
+    success = user_management.unmatched(username, matched_username)
+
+    # Check if the unmatch was successful
+    if not success:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the response
+    response.status_code = status.HTTP_200_OK
+    return {"message": "User unmatched"}
 
 
 @app.get("/api/logout", tags=["user"], dependencies=[Depends(verify_session_id)])
