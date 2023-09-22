@@ -17,6 +17,7 @@ from configparser import ConfigParser
 import json
 
 # TODO: Create functions to revoke access token and delete session
+# TODO: Change all monogdb functions to use motor instead for async
 
 # Custom utils
 import utils.database as database
@@ -257,6 +258,8 @@ async def delete_user(response: Response, username: str = Header(None)):
     :param username:
     :return:
     """
+    # raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented")
+
     # Check if the username is None
     if username is None:
         response.status_code = status.HTTP_400_BAD_REQUEST
@@ -327,7 +330,7 @@ async def like_user(response: Response, liked_username: str, username: str = Hea
         return {"message": "No username provided"}
 
     # Like the user
-    success = user_management.like_user(username, liked_username)
+    success = user_management.like(username, liked_username)
 
     # Check if the like was successful
     if not success:
@@ -339,8 +342,8 @@ async def like_user(response: Response, liked_username: str, username: str = Hea
     return {"message": "User liked"}
 
 
-@app.put("/api/unlike_user", tags=["likes"], dependencies=[Depends(verify_session_id)])
-async def unlike_user(response: Response, liked_username: str, username: str = Header(None)):
+@app.put("/api/dislike_user", tags=["likes"], dependencies=[Depends(verify_session_id)])
+async def dislike_user(response: Response, liked_username: str, username: str = Header(None)):
     """
     Unlikes a user
     :param response:
@@ -359,7 +362,7 @@ async def unlike_user(response: Response, liked_username: str, username: str = H
         return {"message": "No username provided"}
 
     # Unlike the user
-    success = user_management.unlike_user(username, liked_username)
+    success = user_management.dislike(username, liked_username)
 
     # Check if the unlike was successful
     if not success:

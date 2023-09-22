@@ -54,7 +54,7 @@ def create_user(username):
     })
 
 
-def like_user(username, liked_username):
+def like_user(user1, user2):
     # Generate a unique custom _id
     package_id = ObjectId()
 
@@ -63,18 +63,18 @@ def like_user(username, liked_username):
         package_id = ObjectId()  # Generate a new custom _id
 
     # Get the user id of the user
-    user = col_users.find_one({"username": username})
-    user_id = user["_id"]
+    user1 = col_users.find_one({"username": user1, "active": True})
+    user1_id = user1["_id"]
 
     # Get the user id of the liked user
-    liked_user = col_users.find_one({"username": liked_username})
-    liked_user_id = liked_user["_id"]
+    user2 = col_users.find_one({"username": user2, "active": True})
+    user2_id = user2["_id"]
 
     package = {
         "_id": package_id,
         "active": True,
-        "user_id": user_id,
-        "liked_user_id": liked_user_id,
+        "user_id": user1_id,
+        "liked_user_id": user2_id,
         "created_at": dt.datetime.now(),
         "deleted_at": None
     }
@@ -82,10 +82,10 @@ def like_user(username, liked_username):
     col_likes.insert_one(package)
 
     # Update the user's likes
-    col_users.update_one({"username": username}, {"$push": {"likes": package_id}})
+    col_users.update_one({"username": user1, "active": True}, {"$push": {"likes": package_id}})
 
     # Update the liked user's likes
-    col_users.update_one({"username": liked_username}, {"$push": {"likes": package_id}})
+    col_users.update_one({"username": user2, "active": True }, {"$push": {"likes": package_id}})
 
 
 def remove_all_likes():
