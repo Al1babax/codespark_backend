@@ -245,9 +245,14 @@ async def get_matches(response: Response, username: str = Header(None)):
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Internal server error"}
 
+    # Package the matches
+    package = {
+        "data": matches
+    }
+
     # Return the matches
     response.status_code = status.HTTP_200_OK
-    return matches
+    return package
 
 
 @app.delete("/api/delete_user", tags=["user"], dependencies=[Depends(verify_session_id)])

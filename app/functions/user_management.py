@@ -5,12 +5,15 @@ import pymongo
 import time
 import datetime
 from bson import ObjectId
+import os
+from dotenv import load_dotenv
 
-from utils import database
+
+# from utils import database
 
 
 # TODO: handle profile pictures
-# TODO: add update time to user profile
+# TODO: handle discovers into sessions, simple sorting algorithm based on time
 
 
 def verify_session_id(request: Request = None):
@@ -205,24 +208,29 @@ class UserManagement:
     def like(self, user1, user2) -> bool:
         """
         User 1 likes user 2
-        0. Add like to user 1
+        0. Make sure users are not the same
         1. Check if user 1 has liked user 2 before --> Do nothing
         2. Check if user 2 has liked user 1 before --> Create match, remove likes from both users
+        3. Add like to user 1
         :param user1:
         :param user2:
         :return:
         """
+        # Make sure users are not the same
+        if user1 == user2:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot like yourself")
+
         # Get users
         user1_data = self.col_users.find_one({"username": user1, "active": True})
         user2_data = self.col_users.find_one({"username": user2, "active": True})
 
+        # Check that the users are not None
+        if user1_data is None or user2_data is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
+
         # get user ids
         user1_id = user1_data["_id"]
         user2_id = user2_data["_id"]
-
-        # Check if the users are None
-        if user1_data is None or user2_data is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
 
         # Check if user 1 has liked user 2 before
         query = self.col_likes.find_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True})
@@ -235,13 +243,11 @@ class UserManagement:
 
         # If this query is not None, then create a match
         if query is not None:
+            # Create like
+            self.like_user(user1, user2)
             # Create match
-            self.col_matches.insert_one({
-                "user1_id": user1_id,
-                "user2_id": user2_id,
-                "created_at": datetime.datetime.now(),
-                "active": True
-            })
+            self.create_match(user1_id, user2_id)
+            return True
 
         # Final case, user 1 has not liked user 2 before and user 2 has not liked user 1 before
         # Create like object
@@ -277,10 +283,10 @@ class UserManagement:
         self.col_likes.insert_one(package)
 
         # Update the user's likes
-        self.col_users.update_one({"username": user1, "active": True}, {"$push": {"likes": package_id}})
+        self.col_users.update_one({"_id": user1_id, "active": True}, {"$push": {"likes": package_id}})
 
         # Update the liked user's likes
-        self.col_users.update_one({"username": user2, "active": True}, {"$push": {"likes": package_id}})
+        self.col_users.update_one({"_id": user2_id, "active": True}, {"$push": {"likes": package_id}})
 
     def create_match(self, user1_id, user2_id):
         """
@@ -299,16 +305,12 @@ class UserManagement:
         while self.col_matches.find_one({"_id": package_id}):
             package_id = ObjectId()  # Generate a new custom _id
 
-        # Check if both users like each other
-        query = self.col_likes.find_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True})
+        # Check that both users have liked each other
+        query1 = self.col_likes.find_one({"user_id": user2_id, "liked_user_id": user1_id, "active": True})
+        query2 = self.col_likes.find_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True})
 
-        if query is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User 1 does not like user 2")
-
-        query = self.col_likes.find_one({"user_id": user2_id, "liked_user_id": user1_id, "active": True})
-
-        if query is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User 2 does not like user 1")
+        if query1 is None or query2 is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Users do not have a match")
 
         # To have exact same time for both users
         dt_object = datetime.datetime.now()
@@ -324,8 +326,8 @@ class UserManagement:
         self.col_matches.insert_one({
             "_id": package_id,
             "active": True,
-            "user1_id": user1_id,
-            "user2_id": user2_id,
+            "user_id": user1_id,
+            "matched_user_id": user2_id,
             "created_at": datetime.datetime.now(),
             "deleted_at": None
         })
@@ -371,24 +373,19 @@ class UserManagement:
         self.col_likes.update_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True},
                                   {"$set": {"active": False, "deleted_at": datetime.datetime.now()}})
 
-        # Remove like id from both users
-        self.col_users.update_one({"_id": user1_id, "active": True}, {"$pull": {"likes": query["_id"]}})
-        self.col_users.update_one({"_id": user2_id, "active": True}, {"$pull": {"likes": query["_id"]}})
-
         return True
 
     def delete_match(self, user1_id, user2_id):
         """
-        1. Make sure both users have a match
+        1. Make sure the match exists
         2. Deactivate match object in match collection
-        3. Remove match id from both users
         :param user1_id:
         :param user2_id:
         :return:
         """
-        # Check if both users have a match
-        query1 = self.col_matches.find_one({"user1_id": user1_id, "user2_id": user2_id, "active": True})
-        query2 = self.col_matches.find_one({"user1_id": user2_id, "user2_id": user1_id, "active": True})
+        # Check if match exists
+        query1 = self.col_matches.find_one({"user_id": user1_id, "matched_user_id": user2_id, "active": True})
+        query2 = self.col_matches.find_one({"user_id": user2_id, "matched_user_id": user1_id, "active": True})
 
         # If both queries are None, then there is no match
         if query1 is None and query2 is None:
@@ -397,21 +394,238 @@ class UserManagement:
         # Deactivate match object in match collection
         if query1 is not None:
             # Deactivate match object in match collection
-            self.col_matches.update_one({"user1_id": user1_id, "user2_id": user2_id, "active": True},
+            self.col_matches.update_one({"_id": query1["_id"], "active": True},
                                         {"$set": {"active": False, "deleted_at": datetime.datetime.now()}})
-
-            # Remove match id from both users
-            self.col_users.update_one({"_id": user1_id, "active": True}, {"$pull": {"matches": query1["_id"]}})
-            self.col_users.update_one({"_id": user2_id, "active": True}, {"$pull": {"matches": query1["_id"]}})
 
         if query2 is not None:
             # Deactivate match object in match collection
-            self.col_matches.update_one({"user1_id": user2_id, "user2_id": user1_id, "active": True},
+            self.col_matches.update_one({"_id": query2["_id"], "active": True},
                                         {"$set": {"active": False, "deleted_at": datetime.datetime.now()}})
 
-            # Remove match id from both users
-            self.col_users.update_one({"_id": user1_id, "active": True}, {"$pull": {"matches": query2["_id"]}})
-            self.col_users.update_one({"_id": user2_id, "active": True}, {"$pull": {"matches": query2["_id"]}})
+    def unmatched(self, user1, user2) -> bool:
+        """
+        Unmatch users
+        :param user1:
+        :param user2:
+        :return:
+        """
+        # Get users
+        user1 = self.col_users.find_one({"username": user1, "active": True})
+        user2 = self.col_users.find_one({"username": user2, "active": True})
+
+        # Get user ids
+        user1_id = user1["_id"]
+        user2_id = user2["_id"]
+
+        # Check if the users are None
+        if user1 is None or user2 is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
+
+        # delete match
+        self.delete_match(user1_id, user2_id)
+
+        return True
 
     def get_matches(self, username: str) -> list:
-        pass
+        """
+        1. Get all matches by id
+        2. Get user info for each match
+        :param username:
+        :return:
+        """
+        # Get user
+        user = self.col_users.find_one({"username": username, "active": True})
+
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
+
+        # Get user id
+        user_id = user["_id"]
+
+        # Get all matches by id
+        matches = user["matches"]
+
+        # Get user info for each match
+        matches_info = []
+
+        for match_id in matches:
+            matched_user_info = self.get_user_info_matches(user_id, match_id)
+
+            # Check that the matched user is not empty
+            if matched_user_info != {}:
+                matches_info.append(matched_user_info)
+
+        return matches_info
+
+    def get_user_info_matches(self, user_id: ObjectId, match_id: ObjectId) -> dict:
+        """
+        Use user_id to know which one is the user and which one is the match
+        Get basic information about the matched user
+        :param user_id:
+        :param match_id:
+        :return:
+        """
+        # Get match
+        match = self.col_matches.find_one({"_id": match_id, "active": True})
+
+        # Get user2 id from the match
+        user2_id = match["user_id"] if match["user_id"] != user_id else match["matched_user_id"]
+
+        # Get user2
+        user2 = self.col_users.find_one({"_id": user2_id, "active": True})
+
+        # Make sure the user2 is not None, if so then skip
+        if user2 is None:
+            return {}
+
+        # Schema to deliver of user 2
+        schema = ["username", "email", "discord_username", "profile_picture", "natural_languages", "background",
+                  "looking_for", "how_contribute"]
+
+        user2_info = {field: user2[field] for field in schema}
+
+        return user2_info
+
+    def get_likes(self, user) -> dict:
+        """
+        1. Get all likes by id
+        2. Get user info for each like
+        :param user:
+        :return:
+        """
+        # Get user
+        user = self.col_users.find_one({"username": user, "active": True})
+
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
+
+        # Get user id
+        user_id = user["_id"]
+
+        # Get all likes by id
+        likes = user["likes"]
+
+        # List of all users that the user has liked
+        user_liked = []
+
+        # List of all users that have liked the user
+        liked_user = []
+
+        # Get users that the user has liked
+        for like_id in likes:
+            liked_user_info = self.get_user_info_likes(user_id, like_id)
+
+            # Check that the liked user is not empty
+            if liked_user_info != {}:
+                user_liked.append(liked_user_info)
+
+        # Get users that have liked the user
+        for like_id in self.col_likes.find({"liked_user_id": user_id, "active": True}):
+            user_info = self.get_user_info_likes(user_id, like_id["_id"])
+
+            # Check that the liked user is not empty
+            if user_info != {}:
+                liked_user.append(user_info)
+
+        # Combine the two lists into dict
+        likes_info = {
+            "user_liked": user_liked,
+            "liked_user": liked_user
+        }
+
+        return likes_info
+
+    def get_user_info_likes(self, user_id: ObjectId, like_id: ObjectId) -> dict:
+        """
+        Use user_id to know which one is the user and which one is the liked user
+        Get basic information about the liked user
+        :param user_id:
+        :param like_id:
+        :return:
+        """
+        # Get like, Also make sure the like is active
+        like = self.col_likes.find_one({"_id": like_id, "active": True})
+
+        # Get liked user id from the like
+        liked_user_id = like["user_id"] if like["user_id"] != user_id else like["liked_user_id"]
+
+        # Get liked user
+        liked_user = self.col_users.find_one({"_id": liked_user_id, "active": True})
+
+        # Make sure the liked user is not None, if so then skip
+        if liked_user is None:
+            return {}
+
+        # Schema to deliver of liked user
+        schema = ["username", "profile_picture", "natural_languages", "background",
+                  "looking_for", "how_contribute"]
+
+        liked_user_info = {field: liked_user[field] for field in schema}
+
+        return liked_user_info
+
+
+def reset_database(user_management: UserManagement):
+    """
+    1. Empty likes collection
+    2. Empty matches collections
+    3. Empty sessions collections
+    4. Loop through every user and empty their likes and matches
+    :return:
+    """
+    # Empty likes collection
+    user_management.col_likes.delete_many({})
+
+    # Empty matches collections
+    user_management.col_matches.delete_many({})
+
+    # Empty sessions collections
+    user_management.col_sessions.delete_many({})
+
+    # Loop through every user and empty their likes and matches
+    for user in user_management.col_users.find({}):
+        user_management.col_users.update_one({"_id": user["_id"]}, {"$set": {"likes": [], "matches": []}})
+
+
+def main():
+    load_dotenv()
+    mongo_uri = os.getenv("MONGO_URI")
+
+    client = pymongo.MongoClient(mongo_uri)
+    db = client["codespark"]
+
+    user_management = UserManagement(db)
+
+    # Reset database
+    reset_database(user_management)
+
+    # Test get user profile
+    # print(user_management.get_user_profile("Al1babax"))
+
+    # Test like user
+    user_management.like("Al1babax", "user0")
+    user_management.like("Al1babax", "user5")
+    user_management.like("user1", "Al1babax")
+    user_management.like("user2", "Al1babax")
+    user_management.like("user3", "Al1babax")
+
+    # Test like user, approve the match
+    # user_management.like("user0", "Al1babax")
+
+    # Test unmatched
+    # user_management.unmatched("Al1babax", "user0")
+    # user_management.unmatched("user0", "Al1babax")
+
+    # Test dislike user
+    # user_management.dislike("Al1babax", "user0")
+    # user_management.dislike("user0", "Al1babax")
+
+    # Test find matches
+    # print(user_management.get_matches("Al1babax"))
+
+    # Test find likes
+    print(user_management.get_likes("Al1babax"))
+
+
+if __name__ == '__main__':
+    main()
