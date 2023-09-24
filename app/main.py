@@ -196,6 +196,32 @@ async def get_matches(response: Response, username: str = Header(None)):
     return package
 
 
+@app.get("api/get_discovers", tags=["discovers"], dependencies=[Depends(verify_session_id)])
+async def get_discovers(response: Response, username: str = Header(None)):
+    """
+    Gets the users discovers
+    :param response:
+    :param username:
+    :return:
+    """
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Get the users discovers
+    discovers = user_management.get_discover_users(username)
+
+    # Check if the discovers is None
+    if discovers is None:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the discovers
+    response.status_code = status.HTTP_200_OK
+    return discovers
+
+
 @app.delete("/api/delete_user", tags=["user"], dependencies=[Depends(verify_session_id)])
 async def delete_user(response: Response, username: str = Header(None)):
     """
@@ -291,16 +317,16 @@ async def like_user(response: Response, liked_username: str, username: str = Hea
 
 
 @app.put("/api/dislike_user", tags=["likes"], dependencies=[Depends(verify_session_id)])
-async def dislike_user(response: Response, liked_username: str, username: str = Header(None)):
+async def dislike_user(response: Response, disliked_username: str, username: str = Header(None)):
     """
     Unlikes a user
     :param response:
-    :param liked_username:
+    :param disliked_username:
     :param username:
     :return:
     """
     # Check if the liked_username is None
-    if liked_username is None:
+    if disliked_username is None:
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"message": "No liked_username provided"}
 
@@ -310,7 +336,7 @@ async def dislike_user(response: Response, liked_username: str, username: str = 
         return {"message": "No username provided"}
 
     # Unlike the user
-    success = user_management.dislike(username, liked_username)
+    success = user_management.dislike(username, disliked_username)
 
     # Check if the unlike was successful
     if not success:

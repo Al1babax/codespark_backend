@@ -190,6 +190,9 @@ class OauthWorkflow:
             "active": True
         })
 
+        # Update the last login time
+        self.col_users.update_one({"_id": user_id}, {"$set": {"last_login": creation_time}})
+
         return True
 
     def remove_session(self):

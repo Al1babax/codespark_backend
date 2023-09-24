@@ -233,13 +233,15 @@ class UserManagement:
         user2_id = user2_data["_id"]
 
         # Check if user 1 has liked user 2 before
-        query = self.col_likes.find_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True})
+        query = self.col_likes.find_one(
+            {"user_id": user1_id, "liked_user_id": user2_id, "active": True, "is_like": True})
 
         if query is not None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has already liked this user")
 
         # Check if user 2 has liked user 1 before
-        query = self.col_likes.find_one({"user_id": user2_id, "liked_user_id": user1_id, "active": True})
+        query = self.col_likes.find_one(
+            {"user_id": user2_id, "liked_user_id": user1_id, "active": True, "is_like": True})
 
         # If this query is not None, then create a match
         if query is not None:
@@ -274,6 +276,7 @@ class UserManagement:
         package = {
             "_id": package_id,
             "active": True,
+            "is_like": True,
             "user_id": user1_id,
             "liked_user_id": user2_id,
             "created_at": dt.datetime.now(),
@@ -306,8 +309,10 @@ class UserManagement:
             package_id = ObjectId()  # Generate a new custom _id
 
         # Check that both users have liked each other
-        query1 = self.col_likes.find_one({"user_id": user2_id, "liked_user_id": user1_id, "active": True})
-        query2 = self.col_likes.find_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True})
+        query1 = self.col_likes.find_one(
+            {"user_id": user2_id, "liked_user_id": user1_id, "active": True, "is_like": True})
+        query2 = self.col_likes.find_one(
+            {"user_id": user1_id, "liked_user_id": user2_id, "active": True, "is_like": True})
 
         if query1 is None or query2 is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Users do not have a match")
@@ -316,10 +321,10 @@ class UserManagement:
         dt_object = datetime.datetime.now()
 
         # Deactivate like objects in like collection
-        self.col_likes.update_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True},
+        self.col_likes.update_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True, "is_like": True},
                                   {"$set": {"active": False, "deleted_at": dt_object}})
 
-        self.col_likes.update_one({"user_id": user2_id, "liked_user_id": user1_id, "active": True},
+        self.col_likes.update_one({"user_id": user2_id, "liked_user_id": user1_id, "active": True, "is_like": True},
                                   {"$set": {"active": False, "deleted_at": dt_object}})
 
         # Create match object in match collection
@@ -338,7 +343,7 @@ class UserManagement:
 
     def dislike(self, user1, user2) -> bool:
         """
-        0. Check if users have a match --> deactivate match and Delete likes for both users
+        0. Check if users have a match --> deactivate match
         1. Check if user 1 has liked user 2 before --> Delete like object and remove like id from both users
         :param user1:
         :param user2:
@@ -364,14 +369,38 @@ class UserManagement:
             self.delete_match(user1_id, user2_id)
 
         # Check if user 1 has liked user 2 before
-        query = self.col_likes.find_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True})
+        query = self.col_likes.find_one(
+            {"user_id": user1_id, "liked_user_id": user2_id, "active": True, "is_like": True})
 
-        if query is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has not liked this user")
+        if query is not None:
+            # Deactivate like object in like collection
+            self.col_likes.update_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True, "is_like": True},
+                                      {"$set": {"active": False, "deleted_at": datetime.datetime.now()}})
 
-        # Delete like object
-        self.col_likes.update_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True},
-                                  {"$set": {"active": False, "deleted_at": datetime.datetime.now()}})
+        # Create unique id
+        package_id = ObjectId()
+
+        # Check if the custom _id is already in use (unlikely but possible)
+        while self.col_likes.find_one({"_id": package_id}):
+            package_id = ObjectId()
+
+        # Create dislike package
+        package = {
+            "_id": package_id,
+            "active": True,
+            "is_like": False,
+            "user_id": user1_id,
+            "liked_user_id": user2_id,
+            "created_at": dt.datetime.now(),
+            "deleted_at": None
+        }
+
+        # Insert dislike package
+        self.col_likes.insert_one(package)
+
+        # Update the user's likes
+        self.col_users.update_one({"_id": user1_id, "active": True}, {"$push": {"likes": package_id}})
+        self.col_users.update_one({"_id": user2_id, "active": True}, {"$push": {"likes": package_id}})
 
         return True
 
@@ -513,18 +542,14 @@ class UserManagement:
 
         # Get users that the user has liked
         for like_id in likes:
-            liked_user_info = self.get_user_info_likes(user_id, like_id)
+            user_info, user_liked_flag, liked_user_flag = self.get_user_info_likes(user_id, like_id)
 
-            # Check that the liked user is not empty
-            if liked_user_info != {}:
-                user_liked.append(liked_user_info)
+            # Check that the liked user is not empty, then append
+            if user_info != {} and user_liked_flag is True:
+                user_liked.append(user_info)
 
-        # Get users that have liked the user
-        for like_id in self.col_likes.find({"liked_user_id": user_id, "active": True}):
-            user_info = self.get_user_info_likes(user_id, like_id["_id"])
-
-            # Check that the liked user is not empty
-            if user_info != {}:
+            # Check that the liked user is not empty, then append
+            if user_info != {} and liked_user_flag is True:
                 liked_user.append(user_info)
 
         # Combine the two lists into dict
@@ -535,26 +560,86 @@ class UserManagement:
 
         return likes_info
 
-    def get_user_info_likes(self, user_id: ObjectId, like_id: ObjectId) -> dict:
+    def get_dislikes(self, user) -> dict:
+        """
+        1. Get all likes by id
+        2. Get user info for each like
+        :param user:
+        :return:
+        """
+        # Get user
+        user = self.col_users.find_one({"username": user, "active": True})
+
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
+
+        # Get user id
+        user_id = user["_id"]
+
+        # Get all likes by id
+        likes = user["likes"]
+
+        # List of all users that the user has liked
+        user_disliked = []
+
+        # List of all users that have liked the user
+        disliked_user = []
+
+        # Get users that the user has liked
+        for like_id in likes:
+            user_info, user_disliked_flag, disliked_user_flag = self.get_user_info_likes(user_id, like_id, False)
+
+            # Check that the liked user is not empty, then append
+            if user_info != {} and user_disliked_flag is True:
+                user_disliked.append(user_info)
+
+            # Check that the liked user is not empty, then append
+            if user_info != {} and disliked_user_flag is True:
+                disliked_user.append(user_info)
+
+        # Combine the two lists into dict
+        dislikes_info = {
+            "user_disliked": user_disliked,
+            "disliked_user": disliked_user
+        }
+
+        return dislikes_info
+
+    def get_user_info_likes(self, user_id: ObjectId, like_id: ObjectId, is_like: bool = True):
         """
         Use user_id to know which one is the user and which one is the liked user
         Get basic information about the liked user
         :param user_id:
         :param like_id:
+        :param is_like:
         :return:
         """
+        # Init flags
+        user_liked_flag = False
+        liked_user_flag = False
+
         # Get like, Also make sure the like is active
-        like = self.col_likes.find_one({"_id": like_id, "active": True})
+        like = self.col_likes.find_one({"_id": like_id, "active": True, "is_like": is_like})
+
+        # Make sure the like is not None
+        if like is None:
+            return {}, user_liked_flag, liked_user_flag
+
+        # Check if the user is the user that liked the other user
+        if like["user_id"] == user_id:
+            user_liked_flag = True
+        else:
+            liked_user_flag = True
 
         # Get liked user id from the like
-        liked_user_id = like["user_id"] if like["user_id"] != user_id else like["liked_user_id"]
+        liked_user_id = like["liked_user_id"] if user_liked_flag else like["user_id"]
 
         # Get liked user
         liked_user = self.col_users.find_one({"_id": liked_user_id, "active": True})
 
         # Make sure the liked user is not None, if so then skip
         if liked_user is None:
-            return {}
+            return {}, user_liked_flag, liked_user_flag
 
         # Schema to deliver of liked user
         schema = ["username", "profile_picture", "natural_languages", "background",
@@ -562,7 +647,104 @@ class UserManagement:
 
         liked_user_info = {field: liked_user[field] for field in schema}
 
-        return liked_user_info
+        return liked_user_info, user_liked_flag, liked_user_flag
+
+    def get_discover_users(self, username: str) -> list:
+        """
+        Gets up to 100 users that the user has not liked or disliked or matched
+        Then sort them by last_login
+        :return:
+        """
+        # Get user
+        user = self.col_users.find_one({"username": username, "active": True})
+
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
+
+        # Get user id
+        user_id = user["_id"]
+
+        # Get all likes by id
+        likes = user["likes"]
+
+        # Get all matches by id
+        matches = user["matches"]
+
+        # Get all users
+        users = self.col_users.find({"active": True})
+
+        # List of all users that the user has liked
+        user_liked = self.get_likes(username)["user_liked"]
+
+        # List of all users that have liked the user
+        liked_user = self.get_likes(username)["liked_user"]
+
+        # List of all users that the user has matched
+        user_matched = self.get_matches(username)
+
+        # List of all users that the user has disliked
+        user_disliked = self.get_dislikes(username)["user_disliked"]
+
+        # List of all users that have disliked the user
+        disliked_user = self.get_dislikes(username)["disliked_user"]
+
+        # Check if the user has liked or matched or disliked anyone
+        if len(likes) == 0 and len(matches) == 0:
+            users = list(users)[:100]
+            # Sort users by last_login
+            users = sorted(users, key=lambda x: x["last_login"], reverse=True)
+            return users
+
+        # List of all usernames to exclude, start with the user's username
+        exclude = [username]
+
+        # Add all users that the user has liked to exclude
+        for user in user_liked:
+            exclude.append(user["username"])
+
+        # Add all users that have liked the user to exclude
+        for user in liked_user:
+            exclude.append(user["username"])
+
+        # Add all users that the user has matched to exclude
+        for user in user_matched:
+            exclude.append(user["username"])
+
+        # Add all users that the user has disliked to exclude
+        for user in user_disliked:
+            exclude.append(user["username"])
+
+        # Add all users that have disliked the user to exclude
+        for user in disliked_user:
+            exclude.append(user["username"])
+
+        # Get all users that the user has not liked or disliked or matched
+        users = self.col_users.find({"username": {"$nin": exclude}, "active": True})
+
+        # Check that users is not none
+        if users is None:
+            return []
+
+        users = list(users)
+
+        # Check if the user has liked or matched or disliked anyone
+        if users == 0:
+            return []
+
+        # Get up to 100 users
+        users_list = users[:100]
+
+        # Sort users by last_login datetime
+        users_list = sorted(users_list, key=lambda x: x["last_login"], reverse=True)
+
+        # Schema to deliver of user_list
+        schema = ["username", "profile_picture", "natural_languages", "background",
+                  "looking_for", "how_contribute"]
+
+        # Create the user data
+        users_list = [{field: user[field] for field in schema} for user in users_list]
+
+        return users_list
 
 
 def reset_database(user_management: UserManagement):
@@ -604,13 +786,14 @@ def main():
 
     # Test like user
     user_management.like("Al1babax", "user0")
-    user_management.like("Al1babax", "user5")
+    # user_management.like("Al1babax", "user5")
     user_management.like("user1", "Al1babax")
     user_management.like("user2", "Al1babax")
     user_management.like("user3", "Al1babax")
 
     # Test like user, approve the match
     # user_management.like("user0", "Al1babax")
+    user_management.like("user5", "Al1babax")
 
     # Test unmatched
     # user_management.unmatched("Al1babax", "user0")
@@ -618,13 +801,61 @@ def main():
 
     # Test dislike user
     # user_management.dislike("Al1babax", "user0")
-    # user_management.dislike("user0", "Al1babax")
+    user_management.dislike("user5", "Al1babax")
 
     # Test find matches
-    # print(user_management.get_matches("Al1babax"))
+    matches = user_management.get_matches("Al1babax")
+
+    print("Matches:")
+    for match in matches:
+        # print in nice format
+        for key in match.keys():
+            print(key, ":", match[key])
+        print("\n")
 
     # Test find likes
-    print(user_management.get_likes("Al1babax"))
+    likes = user_management.get_likes("Al1babax")
+
+    print("You like:")
+    for like in likes["user_liked"]:
+        # print in nice format
+        for key in like.keys():
+            print(key, ":", like[key])
+        print("\n")
+
+    print("Likes you:")
+    for like in likes["liked_user"]:
+        # print in nice format
+        for key in like.keys():
+            print(key, ":", like[key])
+        print("\n")
+
+    # Test find dislikes
+    dislikes = user_management.get_dislikes("Al1babax")
+
+    print("You dislike:")
+    for dislike in dislikes["user_disliked"]:
+        # print in nice format
+        for key in dislike.keys():
+            print(key, ":", dislike[key])
+        print("\n")
+
+    print("Dislikes you:")
+    for dislike in dislikes["disliked_user"]:
+        # print in nice format
+        for key in dislike.keys():
+            print(key, ":", dislike[key])
+        print("\n")
+
+    # Test discover users
+    discover_users = user_management.get_discover_users("Al1babax")
+
+    print("Discover users:")
+    for user in discover_users:
+        # print in nice format
+        for key in user.keys():
+            print(key, ":", user[key])
+        print("\n")
 
 
 if __name__ == '__main__':
