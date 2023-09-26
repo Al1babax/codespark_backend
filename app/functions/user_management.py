@@ -9,7 +9,7 @@ import os
 from dotenv import load_dotenv
 
 
-# from utils import database
+from utils import database
 
 
 # TODO: handle profile pictures
@@ -497,6 +497,10 @@ class UserManagement:
         # Get match
         match = self.col_matches.find_one({"_id": match_id, "active": True})
 
+        # Check if the match is None
+        if match is None:
+            return {}
+
         # Get user2 id from the match
         user2_id = match["user_id"] if match["user_id"] != user_id else match["matched_user_id"]
 
@@ -786,7 +790,7 @@ def main():
 
     # Test like user
     user_management.like("Al1babax", "user0")
-    # user_management.like("Al1babax", "user5")
+    user_management.like("Al1babax", "user5")
     user_management.like("user1", "Al1babax")
     user_management.like("user2", "Al1babax")
     user_management.like("user3", "Al1babax")
@@ -801,7 +805,7 @@ def main():
 
     # Test dislike user
     # user_management.dislike("Al1babax", "user0")
-    user_management.dislike("user5", "Al1babax")
+    # user_management.dislike("user5", "Al1babax")
 
     # Test find matches
     matches = user_management.get_matches("Al1babax")

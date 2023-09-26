@@ -145,8 +145,6 @@ async def get_likes(response: Response, username: str = Header(None)):
     :param username:
     :return:
     """
-    # TODO: finish this
-
     # Check if the username is None
     if username is None:
         response.status_code = status.HTTP_400_BAD_REQUEST
@@ -186,17 +184,12 @@ async def get_matches(response: Response, username: str = Header(None)):
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"message": "Internal server error"}
 
-    # Package the matches
-    package = {
-        "data": matches
-    }
-
     # Return the matches
     response.status_code = status.HTTP_200_OK
-    return package
+    return matches
 
 
-@app.get("api/get_discovers", tags=["discovers"], dependencies=[Depends(verify_session_id)])
+@app.get("/api/get_discovers", tags=["discovers"], dependencies=[Depends(verify_session_id)])
 async def get_discovers(response: Response, username: str = Header(None)):
     """
     Gets the users discovers
@@ -250,41 +243,7 @@ async def delete_user(response: Response, username: str = Header(None)):
     return {"message": "User deleted"}
 
 
-@app.get("/api/verify_session_id", tags=["user"])
-async def verify_session_id(response: Response, session_id: str = Header(None), username: str = Header(None)):
-    """
-    Verify if session still exists and is not expired
-    :param response:
-    :param session_id:
-    :param username:
-    :return:
-    """
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented")
-
-    # Check if the session_id is None
-    if session_id is None:
-        response.status_code = status.HTTP_400_BAD_REQUEST
-        return {"message": "No session_id provided"}
-
-    # Check if the username is None
-    if username is None:
-        response.status_code = status.HTTP_400_BAD_REQUEST
-        return {"message": "No username provided"}
-
-    # Verify the session_id
-    success = user_management.verify_session_id(session_id, username)
-
-    # Check if the verification was successful
-    if not success:
-        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        return {"message": "Internal server error"}
-
-    # Return the response
-    response.status_code = status.HTTP_200_OK
-    return {"message": "Session verified"}
-
-
-@app.put("/api/like_user", tags=["likes"], dependencies=[Depends(verify_session_id)])
+@app.put("/api/like_user/{liked_username}", tags=["likes"], dependencies=[Depends(verify_session_id)])
 async def like_user(response: Response, liked_username: str, username: str = Header(None)):
     """
     Likes a user
@@ -316,7 +275,7 @@ async def like_user(response: Response, liked_username: str, username: str = Hea
     return {"message": "User liked"}
 
 
-@app.put("/api/dislike_user", tags=["likes"], dependencies=[Depends(verify_session_id)])
+@app.put("/api/dislike_user/{disliked_username}", tags=["likes"], dependencies=[Depends(verify_session_id)])
 async def dislike_user(response: Response, disliked_username: str, username: str = Header(None)):
     """
     Unlikes a user
@@ -388,6 +347,8 @@ async def logout(response: Response, username: str = Header(None)):
     :param username:
     :return:
     """
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented")
+
     # Check if the username is None
     if username is None:
         response.status_code = status.HTTP_400_BAD_REQUEST

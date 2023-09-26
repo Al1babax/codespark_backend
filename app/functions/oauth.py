@@ -6,7 +6,10 @@ from uuid import uuid4
 import datetime as dt
 import bcrypt
 
-#TODO: not saving session data atm, make separate colleciton to save them
+# TODO: not saving session data atm, make separate colleciton to save them
+# TODO: If user changes github account and has codespark account. Solve how user can access their old account!
+# TODO: cronjob on host server that removes old sessions OR save for analytics
+
 
 class OauthWorkflow:
 
