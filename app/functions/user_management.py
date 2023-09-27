@@ -8,8 +8,9 @@ from bson import ObjectId
 import os
 from dotenv import load_dotenv
 
-
 from utils import database
+
+
 
 
 # TODO: handle profile pictures
@@ -375,6 +376,15 @@ class UserManagement:
         if query is not None:
             # Deactivate like object in like collection
             self.col_likes.update_one({"user_id": user1_id, "liked_user_id": user2_id, "active": True, "is_like": True},
+                                      {"$set": {"active": False, "deleted_at": datetime.datetime.now()}})
+
+        # Check if user 2 has liked user 1 before
+        query = self.col_likes.find_one(
+            {"user_id": user2_id, "liked_user_id": user1_id, "active": True, "is_like": True})
+
+        if query is not None:
+            # Deactivate like object in like collection
+            self.col_likes.update_one({"user_id": user2_id, "liked_user_id": user1_id, "active": True, "is_like": True},
                                       {"$set": {"active": False, "deleted_at": datetime.datetime.now()}})
 
         # Create unique id
@@ -808,7 +818,7 @@ def main():
     # user_management.dislike("user5", "Al1babax")
 
     # Test find matches
-    matches = user_management.get_matches("Al1babax")
+    """matches = user_management.get_matches("Al1babax")
 
     print("Matches:")
     for match in matches:
@@ -859,7 +869,7 @@ def main():
         # print in nice format
         for key in user.keys():
             print(key, ":", user[key])
-        print("\n")
+        print("\n")"""
 
 
 if __name__ == '__main__':
