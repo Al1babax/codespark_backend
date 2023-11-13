@@ -11,8 +11,6 @@ from dotenv import load_dotenv
 from utils import database
 
 
-
-
 # TODO: handle profile pictures
 # TODO: handle discovers into sessions, simple sorting algorithm based on time
 
@@ -120,6 +118,76 @@ class UserManagement:
         self.col_users.update_one({"_id": user_data["_id"]}, {"$set": user_data})
 
         return True
+
+    def upload_profile_picture(self, username: str, image: bytes) -> bool:
+        """
+        Gets the user profile image as uncoded string and turns it into jpg and saves to a file
+        :param username:
+        :param image:
+        :return:
+        """
+        # Check if the image is None
+        if image is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No image provided")
+
+        # Generate random file name
+        file_name = f"{username}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jpg"
+
+        # test save file
+        self.jpg_bytes_to_file(image, file_name)
+
+        # Find the user
+        user_data = self.col_users.find_one({"username": username, "active": True})
+
+        # Check if the user is None
+        if user_data is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not exist")
+
+        # Image url link
+        prefix = "http://84.250.88.117:8000/api/get_profile_picture/"
+        image_url = prefix + file_name
+
+        # Update the user
+        self.col_users.update_one({"_id": user_data["_id"]}, {"$set": {"profile_picture": image_url}})
+
+        return True
+
+    def jpg_bytes_to_file(self, image: bytes, file_name: str):
+        """
+        Takes the image as bytes and saves it to a file
+        :param image:
+        :param file_name:
+        :param username:
+        :return:
+        """
+
+        # Create a new file
+        try:
+            with open(f"image_storage/{file_name}", "wb") as file:
+                # Write the image to the file
+                file.write(image)
+        except Exception as e:
+            print(e)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not save image")
+
+    def get_profile_picture_path(self, file_name):
+        """
+        Gets the profile picture path
+        :param username:
+        :param file_name:
+        :return:
+        """
+
+        # Check if the file name is None
+        if file_name is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No file name provided")
+
+        # Make sure file exists
+        if not os.path.exists(f"image_storage/{file_name}"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File does not exist")
+
+        # Return the file path
+        return f"image_storage/{file_name}"
 
     def get_user_profile(self, username: str) -> dict:
         """

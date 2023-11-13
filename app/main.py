@@ -4,7 +4,7 @@ import uvicorn
 from fastapi import FastAPI, Response, status, HTTPException, Cookie, Form, UploadFile, File, Request, Depends, Body, \
     Header
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.security import HTTPBasicCredentials, OAuth2AuthorizationCodeBearer
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +15,8 @@ import requests
 import base64
 from configparser import ConfigParser
 import json
+from starlette.responses import HTMLResponse
+from starlette import status
 
 # TODO: Create functions to revoke access token and delete session
 # TODO: Change all monogdb functions to use motor instead for async
@@ -36,6 +38,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+dev_server_address = "http://localhost:3000"
+prod_server_address = "https://codespark-v2.vercel.app/"
 
 
 @app.get("/api/", tags=["testing"])
@@ -80,8 +85,42 @@ async def github_login_redirect(code: str, response: Response):
 
 @app.get("/init_login", tags=["login"])
 async def init_login(code: str, response: Response):
-    response.status_code = status.HTTP_200_OK
-    print(code)
+    # Process the authentication code as needed and send back to client with a session id and username
+
+    # Create an oauth workflow
+    oauth_workflow = OauthWorkflow(db)
+
+    # Run workflow
+    package = await oauth_workflow.run(code)
+
+    # Package contains username, session_id and has_profile boolean
+
+    # Check if the package is None
+    if package is None:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # If user has profile redirect to home page otherwise to create profile page
+    if package["has_profile"]:
+        redirect_url = f'http://localhost:3000/?username={package["username"]}&session_id={package["session_id"]}&has_profile={package["has_profile"]}'
+    else:
+        redirect_url = f'http://localhost:3000/create_profile?username={package["username"]}&session_id={package["session_id"]}&has_profile={package["has_profile"]}'
+
+    # Create an HTML response with a script for redirection
+    html_content = f"""
+        <html>
+            <head>
+                <script>
+                    // Redirect the user back to the React app
+                    window.location.href = "{redirect_url}";
+                </script>
+            </head>
+            <body>
+                <p>Authentication successful. Redirecting...</p>
+            </body>
+        </html>
+        """
+    return HTMLResponse(content=html_content, status_code=status.HTTP_200_OK)
 
 
 @app.post("/api/update_profile", tags=["profile"], dependencies=[Depends(verify_session_id)])
@@ -107,6 +146,73 @@ async def update_profile(response: Response, body: dict = Body(...), username: s
     # Return the response
     response.status_code = status.HTTP_200_OK
     return {"message": "Profile updated"}
+
+
+@app.post("/api/upload_profile_picture", tags=["profile"], dependencies=[Depends(verify_session_id)])
+async def upload_profile_picture(response: Response, body: dict = Body(...), username: str = Header(None)):
+    """
+    Profile picture is encoded as a base64 string in body["image"]
+    :param response:
+    :param body:
+    :param username:
+    :return:
+    """
+    # Check if the body is None
+    if body is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No body provided"}
+
+    # Check if the username is None
+    if username is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No username provided"}
+
+    # Check if the image is None
+    if body["image"] is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No image provided"}
+
+    # Decode the image
+    image = base64.b64decode(body["image"])
+
+    # Upload the image
+    success = user_management.upload_profile_picture(username, image)
+
+    # Check if the upload was successful
+    if not success:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the response
+    response.status_code = status.HTTP_200_OK
+    return {"message": "Profile picture uploaded"}
+
+
+@app.get("/api/get_profile_picture/{file_name}", tags=["profile"])
+async def get_profile_picture(response: Response, file_name: str):
+    """
+    Gets the users profile picture
+    :param response:
+    :param file_name:
+    :param username:
+    :return:
+    """
+    # Check if the file_name is None
+    if file_name is None:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"message": "No file_name provided"}
+
+    # Get the profile picture
+    profile_picture_path = user_management.get_profile_picture_path(file_name)
+
+    # Check if the profile picture is None
+    if profile_picture_path is None:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"message": "Internal server error"}
+
+    # Return the profile picture
+    response.status_code = status.HTTP_200_OK
+    return FileResponse(profile_picture_path)
 
 
 @app.get("/api/get_profile", tags=["profile"], dependencies=[Depends(verify_session_id)])

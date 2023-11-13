@@ -2,14 +2,10 @@
 
 ## Frontend
 
-### Matches
-- Integrate with backend
-
-### Likes
-- Integrate with backend
-- Write the UI widgets to show the likes
+### Profile image
+- Use image url gotten from backend --> might be already done
 
 ## Backend
 
-- Write the route for getting matches
-- Write the route for getting likes
+- When getting profile image save it to user's profile image
+- make dynamic endpoint for profile image
